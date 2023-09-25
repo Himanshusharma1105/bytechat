@@ -6,6 +6,9 @@ import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { auth, db, storage } from "../firebase";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { doc, setDoc } from "firebase/firestore";
+import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+
 
 
 
@@ -42,10 +45,13 @@ function PasswordInput({ value, onChange }) {
 
 const Register = () => {
   const [formData, setFormData] = useState({
-    firstName: '',
+    displayName: '',
     email: '',
     password: '',
   });
+  const [err, setErr] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
   const [selectedFile, setSelectedFile] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -77,25 +83,53 @@ const Register = () => {
     console.log('Form Data:', formData);
     console.log('Selected File:', selectedFile);
   
-    const { firstName, email, password } = formData; // Destructure the values
-    console.log(password);
+    const { displayName, email, password } = formData; // Destructure the values
   
     try {
       // Create the user with email and password
       const res = await createUserWithEmailAndPassword(auth, email, password);
   
-      // After creating the user, you can perform additional actions, if needed
-     
+      // Create a unique image name
+      const date = new Date().getTime();
+      const storageRef = ref(storage, `${displayName + date}`);
   
-      // Perform other actions like uploading the avatar file, etc.
-      // ...
+      await uploadBytesResumable(storageRef, selectedFile).then(() => {
+        getDownloadURL(storageRef).then(async (downloadURL) => {
+          try {
+            // Update profile using the correct property name: displayName
+            await updateProfile(res.user, {
+              displayName: displayName, // Ensure that displayName is set correctly
+              photoURL: downloadURL,
+            });
+  
+            // Create user on Firestore
+            await setDoc(doc(db, "users", res.user.uid), {
+              uid: res.user.uid,
+              displayName: displayName, // Ensure that displayName is set correctly
+              email,
+              photoURL: downloadURL,
+            });
+  
+            // Create empty user chats on Firestore
+            await setDoc(doc(db, "userChats", res.user.uid), {});
+            navigate("/");
+          } catch (err) {
+            console.error(err);
+            setErr(true);
+            setLoading(false);
+          }
+        });
+      });
   
       console.log('User created:', res.user);
     } catch (error) {
-      // Handle any errors that occur during user creation
       console.error('Error creating user:', error);
+      setErr(true);
+      setLoading(false);
     }
   };
+  
+  
   
   
 
@@ -123,9 +157,9 @@ const Register = () => {
             <FormControl isRequired>
               <FormLabel>First name</FormLabel>
               <Input
-                name="firstName"
+                name="displayName"
                 placeholder="First name"
-                value={formData.firstName}
+                value={formData.displayName}
                 onChange={handleInputChange}
               />
               <FormLabel>Email address</FormLabel>
@@ -160,7 +194,7 @@ const Register = () => {
               Sign Up
             </Button>
           </form>
-          <p> Have an account? Login!</p>
+          <p> Have an account? <Link to="/login">Login!</Link></p>
         </Flex>
       </div>
     </div>
